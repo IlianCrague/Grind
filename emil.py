@@ -4,6 +4,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import asyncio
 import threading
 from bleak import BleakScanner
+from sequence import Sequence
 
 
 WEIGHT_OFFSET = 10
@@ -15,34 +16,19 @@ timer_running = False
 LENGTH_TAB = 20
 
 # Sequence : [(Active=True/False, Name, Duration in seconds, Weight Goal)]
-SEQUENCE = [
-    (True, "3 drag", 10, 23), (False, "Repos", 5), (True, "3 drag", 10, 23), (False, "Repos", 5), (True, "3 drag", 10, 23), (False, "Repos", 5),
-    (True, "3 drag", 10, 23), (False, "Repos", 5), (True, "3 drag", 10, 23), (False, "Repos", 5), (True, "3 drag", 10, 23), (False, "Repos", 5),    
-    (True, "2 drag", 10, 16), (False, "Repos", 5), (True, "2 drag", 10, 16), (False, "Repos", 5),
-    (True, "2 drag", 10, 16), (False, "Repos", 5), (True, "2 drag", 10, 16), (False, "Repos", 5),
-    (True, "4 crimp", 10, 27), (False, "Repos", 5), (True, "4 crimp", 10, 27), (False, "Repos", 5), (True, "4 crimp", 10, 27), (False, "Repos", 5), (True, "4 crimp", 10, 27), (False, "Repos", 5),
-    (True, "4 crimp", 10, 27), (False, "Repos", 5), (True, "4 crimp", 10, 27), (False, "Repos", 5), (True, "4 crimp", 10, 27), (False, "Repos", 5), (True, "4 crimp", 10, 27), (False, "Repos", 5),
-    (True, "back 3", 10, 21), (False, "Repos", 5), (True, "back 3", 10, 21), (False, "Repos", 5),
-    (True, "back 3", 10, 21), (False, "Repos", 5), (True, "back 3", 10, 21), (False, "Repos", 5),
-    (True, "middle 3", 10, 20), (False, "Repos", 5), (True, "middle 3", 10, 20), (False, "Repos", 5),
-    (True, "middle 3", 10, 20), (False, "Repos", 5), (True, "middle 3", 10, 20), (False, "Repos", 5),
-    (True, "mid 2", 10, 16), (False, "Repos", 5),
-    (True, "mid 2", 10, 16), (False, "Repos", 5),
-    (True, "front 2", 10, 21), (False, "Repos", 5),
-    (True, "front 2", 10, 21), (False, "Repos", 5),
-    ]
+SEQUENCE = Sequence.from_file("emil.sq")
 CURRENT_SEQUENCE = 0
 STARTED = False
 FINISHED = False
-TIME_LEFT = SEQUENCE[CURRENT_SEQUENCE][2]  # Initial time for the current sequence
+TIME_LEFT = SEQUENCE.time  # Initial time for the current sequence
 
 def update_graph(ax, canvas):
     """Updates the weight graph."""
     global CURRENT_SEQUENCE, SEQUENCE, max_weight, LENGTH_TAB
     ax.clear()
-    if STARTED and not FINISHED and SEQUENCE[CURRENT_SEQUENCE][0]:
-        ax.plot(range(LENGTH_TAB), [SEQUENCE[CURRENT_SEQUENCE][3]] * LENGTH_TAB, color="red", label="Objectif (kg)")
-        ax.set_ylim(0, SEQUENCE[CURRENT_SEQUENCE][3] + 5)
+    if STARTED and not FINISHED and SEQUENCE.actif:
+        ax.plot(range(LENGTH_TAB), [SEQUENCE.weight_goal] * LENGTH_TAB, color="red", label="Objectif (kg)")
+        ax.set_ylim(0, SEQUENCE.weight_goal + 5)
     else:
         ax.set_ylim(0, max(max_weight / 100 + 10, 10))
 
@@ -67,9 +53,9 @@ def start_timer():
     def next_sequence():
         """Move to the next sequence step or finish."""
         global CURRENT_SEQUENCE, TIME_LEFT, timer_running, STARTED, FINISHED
-        if CURRENT_SEQUENCE < len(SEQUENCE) - 1:
+        if not Sequence.next == None:
             CURRENT_SEQUENCE += 1
-            TIME_LEFT = SEQUENCE[CURRENT_SEQUENCE][2]
+            TIME_LEFT = SEQUENCE.time
         else:
             timer_running = False
             time_left.config(text="Séquence terminée")
@@ -84,8 +70,8 @@ def start_timer():
             return
 
         if timer_running and TIME_LEFT > 0:
-            next = SEQUENCE[CURRENT_SEQUENCE + 1][1] if CURRENT_SEQUENCE < len(SEQUENCE) - 1 else "Finished"
-            time_left.config(text=f"{SEQUENCE[CURRENT_SEQUENCE][1]} : {TIME_LEFT:.1f} sec \n\n  next : {next}")
+            next = SEQUENCE.next.name if SEQUENCE.next is not None else "Finished"
+            time_left.config(text=f"{SEQUENCE.name} : {TIME_LEFT:.1f} sec \n\n  next : {next}")
             TIME_LEFT -= .1
             time_left.after(100, countdown)
         if TIME_LEFT < 0.1:
@@ -114,10 +100,10 @@ def advertisement_callback(device, advertisement_data):
                     weight_display.config(text=f"{weight_kg:.2f} kg     Max : {max_weight / 100:.2f} kg")
 
                     # Logic for starting/stopping timer based on weight and SEQUENCE
-                    if not FINISHED and (SEQUENCE[CURRENT_SEQUENCE][0] and weight_kg > WEIGHT_MIN or not SEQUENCE[CURRENT_SEQUENCE][0] and weight_kg <= WEIGHT_MIN) :
+                    if not FINISHED and (SEQUENCE.actif and weight_kg > WEIGHT_MIN or not SEQUENCE.actif and weight_kg <= WEIGHT_MIN) :
                             if not timer_running:  # Restart timer if paused
                                 if not STARTED:
-                                    TIME_LEFT = SEQUENCE[CURRENT_SEQUENCE][2]
+                                    TIME_LEFT = SEQUENCE.time
                                     STARTED = True
                                 start_timer()
                     else :
