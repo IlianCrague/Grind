@@ -16,7 +16,7 @@ timer_running = False
 LENGTH_TAB = 20
 
 # Sequence : [(Active=True/False, Name, Duration in seconds, Weight Goal)]
-SEQUENCE = Sequence.from_file("emil.sq")
+SEQUENCE = Sequence.from_file("utils/emil.sq")
 CURRENT_SEQUENCE = 0
 STARTED = False
 FINISHED = False

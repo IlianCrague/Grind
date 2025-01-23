@@ -1,0 +1,141 @@
+import tkinter as tk
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import asyncio
+import threading
+from bleak import BleakScanner
+import random
+
+# Paramètres
+WEIGHT_OFFSET = 10
+STABLE_OFFSET = 14
+WEIGHT_MIN = 1
+MAX_WEIGHT = 0
+LENGTH = 15
+POS_BIRD = 5
+MIN_Y = 0
+MAX_Y = 25
+WIDTH_PIPE = 2
+X_PIPE = LENGTH
+Y_PIPE = 15
+SCORE = 0
+
+# Variables globales
+STARTED = False
+pipes = []  # Liste des tuyaux visibles
+current_weight = 0  # Initialisation de current_weight
+
+# Fonction de mise à jour du graphique
+def update_graph(ax, canvas):
+    """Mise à jour du graphique."""
+    global current_weight
+
+    ax.clear()
+
+    # Affiche le poids mesuré
+    ax.scatter(POS_BIRD, current_weight, color='red', s=100, label=f'Point ({POS_BIRD}, {current_weight})')
+
+    # Ajuste l'échelle des axes
+    ax.set_xlim(0, LENGTH)
+    ax.set_ylim(MIN_Y, MAX_Y)
+
+    # Dessine les tuyaux
+    for pipe in pipes:
+        if pipe[2]:
+            rect = patches.Rectangle((pipe[0], pipe[1]), WIDTH_PIPE, MAX_Y - pipe[1], linewidth=1, edgecolor='green', facecolor='none')
+        else:
+            rect = patches.Rectangle((pipe[0], 0), WIDTH_PIPE, pipe[1], linewidth=1, edgecolor='green', facecolor='none')
+        ax.add_patch(rect)
+
+    canvas.draw()
+
+# Callback Bluetooth pour récupérer le poids
+def advertisement_callback(device, advertisement_data):
+    """Gère les données de publicité Bluetooth."""
+    global current_weight, STARTED, Y_PIPE, X_PIPE, pipes, SCORE
+
+    if device.address == "2A:C0:19:11:23:B7":
+        if advertisement_data.manufacturer_data:
+            for manufacturer_id, data in advertisement_data.manufacturer_data.items():
+                if len(data) > max(WEIGHT_OFFSET + 1, STABLE_OFFSET):
+                    weight = (data[WEIGHT_OFFSET] & 0xff) << 8 | (data[WEIGHT_OFFSET + 1] & 0xff)
+                    current_weight = weight / 100
+
+                    # Affiche le poids
+                    weight_display.config(text=f"{current_weight:.2f} kg \n\n Score : {SCORE} pts")
+
+
+                    if len(pipes) == 0 or pipes[-1][0] < LENGTH - 7:  # Ajoute un tuyau si l'écran a de la place
+                        Y_PIPE = random.randint(MIN_Y + (MAX_Y - MIN_Y) // 4, MAX_Y - (MAX_Y - MIN_Y) // 4)
+                        X_PIPE = LENGTH
+                        pipes.append([X_PIPE, Y_PIPE, random.choice([1, 0])])
+
+                    # Déplace tous les tuyaux
+                    for pipe in pipes:
+                        pipe[0] -= 1  # Déplacer chaque tuyau à gauche
+
+                    # Supprimer les tuyaux sortis de l'écran
+                    if pipes[0][0] < 0:
+                        SCORE += 1
+                        pipes = pipes[1:]
+
+                    update_graph(ax, canvas)
+
+# Fonction asynchrone de balayage Bluetooth
+async def scan_for_advertisements():
+    """Recherche les publicités Bluetooth."""
+    scanner = BleakScanner()
+    scanner.register_detection_callback(advertisement_callback)
+
+    await scanner.start()
+    await asyncio.sleep(600)
+    await scanner.stop()
+
+# Fonction pour exécuter l'événement asynchrone dans un thread
+def run_asyncio(loop, stop_event):
+    """Exécute la boucle d'événements asyncio."""
+    asyncio.set_event_loop(loop)
+    loop.create_task(scan_for_advertisements())
+
+    while not stop_event.is_set():
+        loop.call_soon(loop.stop)
+        loop.run_forever()
+
+# Fonction pour créer la fenêtre de l'application
+def create_window():
+    """Crée la fenêtre principale de l'application."""
+    global ax, canvas, weight_display, time_left
+    window = tk.Tk()
+    window.title("Poids Mesuré")
+
+    # Affichage du poids
+    weight_display = tk.Label(window, text="Déconnecté", font=("Helvetica", 16))
+    weight_display.pack(pady=20)
+
+    # Cadre du graphique
+    canvas_frame = tk.Frame(window)
+    canvas_frame.pack(padx=20, pady=20)
+
+    # Configuration du graphique
+    fig, ax_ = plt.subplots(figsize=(5, 4))
+    ax = ax_
+    canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
+    canvas.get_tk_widget().pack()
+
+    # Boucle d'événements asynchrone
+    loop = asyncio.new_event_loop()
+    stop_event = threading.Event()
+    threading.Thread(target=run_asyncio, args=(loop, stop_event), daemon=True).start()
+
+    # Gestion de la fermeture de la fenêtre
+    def on_close():
+        stop_event.set()
+        window.quit()
+
+    window.protocol("WM_DELETE_WINDOW", on_close)
+    window.mainloop()
+
+# Exécution de l'application
+if __name__ == "__main__":
+    create_window()
