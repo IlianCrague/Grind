@@ -17,14 +17,13 @@ LENGTH_TAB = 20
 
 # Sequence : [(Active=True/False, Name, Duration in seconds, Weight Goal)]
 SEQUENCE = Sequence.from_file("utils/emil.sq")
-CURRENT_SEQUENCE = 0
 STARTED = False
 FINISHED = False
 TIME_LEFT = SEQUENCE.time  # Initial time for the current sequence
 
 def update_graph(ax, canvas):
     """Updates the weight graph."""
-    global CURRENT_SEQUENCE, SEQUENCE, max_weight, LENGTH_TAB
+    global SEQUENCE, max_weight, LENGTH_TAB
     ax.clear()
     if STARTED and not FINISHED and SEQUENCE.actif:
         ax.plot(range(LENGTH_TAB), [SEQUENCE.weight_goal] * LENGTH_TAB, color="red", label="Objectif (kg)")
@@ -32,7 +31,7 @@ def update_graph(ax, canvas):
     else:
         ax.set_ylim(0, max(max_weight / 100 + 10, 10))
 
-    ax.plot(range(len(weights)), weights, '-o', label="Poids (kg)", color="blue", marker='')
+    ax.plot(range(len(weights)), weights, label="Poids (kg)", color="blue", marker='')
 
     # Adjust x-axis dynamically
     ax.set_xlim(0, LENGTH_TAB)
@@ -43,7 +42,7 @@ def update_graph(ax, canvas):
 
 
 def start_timer():
-    global timer_running, TIME_LEFT, CURRENT_SEQUENCE, STARTED
+    global timer_running, TIME_LEFT, SEQUENCE, STARTED
 
     if timer_running or FINISHED:  # Prevent multiple timers
         return
@@ -52,9 +51,9 @@ def start_timer():
 
     def next_sequence():
         """Move to the next sequence step or finish."""
-        global CURRENT_SEQUENCE, TIME_LEFT, timer_running, STARTED, FINISHED
-        if not Sequence.next == None:
-            CURRENT_SEQUENCE += 1
+        global SEQUENCE, TIME_LEFT, timer_running, STARTED, FINISHED
+        if SEQUENCE.next is not None:
+            SEQUENCE = SEQUENCE.next
             TIME_LEFT = SEQUENCE.time
         else:
             timer_running = False
@@ -64,7 +63,7 @@ def start_timer():
 
     def countdown():
         """Countdown logic for the timer."""
-        global TIME_LEFT, timer_running
+        global TIME_LEFT, timer_running, SEQUENCE
 
         if FINISHED:  # Stop if finished
             return
@@ -135,11 +134,13 @@ def run_asyncio(loop, stop_event):
         loop.run_forever()
 
 
-def create_window():
-    """Creates the main application window."""
+def create_window_emil(parent_frame=None):
     global ax, canvas, weight_display, time_left
-    window = tk.Tk()
-    window.title("Poids Mesuré")
+
+    if parent_frame is None:
+        window = tk.Tk()
+    else:
+        window = parent_frame
 
     # Weight display
     weight_display = tk.Label(window, text="Déconnecté", font=("Helvetica", 16))
@@ -164,14 +165,20 @@ def create_window():
     stop_event = threading.Event()
     threading.Thread(target=run_asyncio, args=(loop, stop_event), daemon=True).start()
 
-    # On close event
+    # On close event (only for standalone windows)
     def on_close():
         stop_event.set()
-        window.quit()
+        if isinstance(window, (tk.Tk, tk.Toplevel)):
+            window.quit()
 
-    window.protocol("WM_DELETE_WINDOW", on_close)
-    window.mainloop()
+    if isinstance(window, (tk.Tk, tk.Toplevel)):
+        window.protocol("WM_DELETE_WINDOW", on_close)
+
+    # If it's a standalone window, start the event loop
+    if parent_frame is None:
+        window.mainloop()
+
 
 
 if __name__ == "__main__":
-    create_window()
+    create_window_emil()

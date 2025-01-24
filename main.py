@@ -3,17 +3,12 @@ import asyncio
 import sys
 
 # Exemple de création de fenêtres d'Emil et d'affichage simple, ces fonctions doivent être implémentées
-from emil_tmp import create_window_emil
+from emil import create_window_emil
 from simple_display import create_window_simple_display
 
 def show_frame(frame):
     """Affiche un cadre spécifique."""
     frame.tkraise()
-
-async def run_asyncio(loop, stop_event):
-    while not stop_event.is_set():
-        loop.stop()  # Run until stop event is set
-        await asyncio.sleep(1)
 
 def create_window():
     # Création de la fenêtre principale
@@ -27,13 +22,11 @@ def create_window():
 
     # Création des cadres
     home_frame = tk.Frame(root)
-    home_frame.grid(row=0, column=0, sticky="nsew")
-
     emil_frame = tk.Frame(root)
-    emil_frame.grid(row=0, column=0, sticky="nsew")
-
     simple_display_frame = tk.Frame(root)
-    simple_display_frame.grid(row=0, column=0, sticky="nsew")
+
+    for frame in (home_frame, emil_frame, simple_display_frame):
+        frame.grid(row=0, column=0, sticky="nsew")
 
     # Contenu de la page d'accueil
     emil_button = tk.Button(
@@ -70,12 +63,11 @@ def create_window():
 
     # Gérer la fermeture de la fenêtre
     def on_close():
-        root.quit()  # Quitte la boucle principale tkinter
-        sys.exit(0)  # Termine le processus
+        root.quit()
+        sys.exit(0)
 
     root.protocol("WM_DELETE_WINDOW", on_close)
 
-    # Lancer la boucle principale de Tkinter
     root.mainloop()
 
 if __name__ == "__main__":
