@@ -12,102 +12,90 @@ WEIGHT_OFFSET = 10
 STABLE_OFFSET = 14
 WEIGHT_MIN = 1
 MAX_WEIGHT = 0
-LENGTH = 15
-POS_BIRD = 5
+LENGTH = 30
+POS_LEFT_PLAYER = 3
+POS_RIGHT_PLAYER = LENGTH - POS_LEFT_PLAYER
 MIN_Y = 0
-MAX_Y = 15
-WIDTH_PIPE = 2
-X_PIPE = LENGTH
-Y_PIPE = 15
+MAX_Y = 10
 SCORE = 0
 FINISHED = False
-N = 0
-weights = []
-LENGTH_TAB = 2
-
-# Variables globales
-STARTED = False
-pipes = []  # Liste des tuyaux visibles
-current_weight = 0  # Initialisation de current_weight
+WEIGHT_LEFT_PLAYER = 0
+WEIGHT_RIGHT_PLAYER = 0
+#ball = (x, y, x_speed, y_speed)
+BALL = [LENGTH // 2, (MAX_Y + MIN_Y) / 2, 0, 0]
+taille_raquette = 2
 
 # Fonction de mise à jour du graphique
 def update_graph(ax, canvas):
     """Mise à jour du graphique."""
-    global current_weight, POS_BIRD
+    global current_weight, WEIGHT_LEFT_PLAYER, WEIGHT_RIGHT_PLAYER, taille_raquette
 
     ax.clear()
 
-    # Affiche le poids mesuré
-    h = MAX_WEIGHT if current_weight > MAX_WEIGHT else current_weight
-    
-    ax.plot([POS_BIRD - i for i in range(LENGTH_TAB)], weights, color="red", marker='')
+    if not FINISHED:
+        ax.plot(BALL[0], BALL[1], 'ro')
+
+    ax.plot([POS_LEFT_PLAYER, POS_LEFT_PLAYER], [WEIGHT_LEFT_PLAYER - taille_raquette, WEIGHT_LEFT_PLAYER + taille_raquette], color="red", marker='')
+
+    ax.plot([POS_RIGHT_PLAYER, POS_RIGHT_PLAYER], [WEIGHT_RIGHT_PLAYER - taille_raquette, WEIGHT_RIGHT_PLAYER + taille_raquette], color="blue", marker='')
 
     # Ajuste l'échelle des axes
     ax.set_xlim(0, LENGTH)
     ax.set_ylim(MIN_Y, MAX_Y)
 
-    # Dessine les tuyaux
-    for pipe in pipes:
-        if pipe[2]:
-            rect = patches.Rectangle((pipe[0], pipe[1]), WIDTH_PIPE, MAX_Y - pipe[1], linewidth=1, edgecolor='green', facecolor='none')
-        else:
-            rect = patches.Rectangle((pipe[0], 0), WIDTH_PIPE, pipe[1], linewidth=1, edgecolor='green', facecolor='none')
-        ax.add_patch(rect)
-
     canvas.draw()
 
-def check_dead():
-    global current_weight, X_PIPE, Y_PIPE, pipes
-    for pipe in pipes:
-        if POS_BIRD >= pipe[0] and POS_BIRD <= pipe[0] + WIDTH_PIPE: #same x
-            if pipe[2]:
-                if current_weight >= pipe[1]:
-                    return True
-            else :
-                if current_weight <= pipe[1]:
-                    return True
-    return False
+def move_ball():
+    global BALL, taille_raquette, SCORE
+    if BALL[0] + BALL[2] <= POS_LEFT_PLAYER :#post left player
+        if BALL[1] > WEIGHT_LEFT_PLAYER + taille_raquette or BALL[1] < WEIGHT_LEFT_PLAYER - taille_raquette :#dead
+            return False
+        else:
+            BALL[2] = BALL[2] * -1
+            SCORE += 1
+    if BALL[0] + BALL[2] >= POS_RIGHT_PLAYER : #post right player
+        if BALL[1] > WEIGHT_RIGHT_PLAYER + taille_raquette or BALL[1] < WEIGHT_RIGHT_PLAYER - taille_raquette :#dead
+            return False
+        else:
+            BALL[2] = BALL[2] * -1
+            SCORE += 1
+    if  BALL[1] + BALL[3] >= MAX_Y or BALL[1] + BALL[3] <= MIN_Y: #hit ceiling or ground
+        BALL[3] = BALL[3] * -1
+    BALL[0] += BALL[2]
+    BALL[1] += BALL[3]
+    return True
+
 
 # Callback Bluetooth pour récupérer le poids
 def advertisement_callback(device, advertisement_data):
     """Gère les données de publicité Bluetooth."""
-    global current_weight, STARTED, Y_PIPE, X_PIPE, pipes, SCORE, FINISHED, N
-    
-    if device.address == "2A:C0:19:11:23:B7" or device.address == "2A:C0:19:11:23:A7":
+    global WEIGHT_LEFT_PLAYER, WEIGHT_RIGHT_PLAYER, pipes, SCORE, FINISHED, BALL
+
+    if device.address == "2A:C0:19:11:23:A7" :
         if advertisement_data.manufacturer_data:
             for manufacturer_id, data in advertisement_data.manufacturer_data.items():
                 if len(data) > max(WEIGHT_OFFSET + 1, STABLE_OFFSET):
-                    if N < 25:
-                        N+=1
                 
-                    weight = (data[WEIGHT_OFFSET] & 0xff) << 8 | (data[WEIGHT_OFFSET + 1] & 0xff)
-                    current_weight = weight / 100
-                    weights.append(current_weight)
-                    if len(weights) > LENGTH_TAB:
-                        weights.pop(0)
+                    WEIGHT_RIGHT_PLAYER = ((data[WEIGHT_OFFSET] & 0xff) << 8 | (data[WEIGHT_OFFSET + 1] & 0xff)) / 100
+                    update_graph(ax, canvas)
 
+    if device.address == "2A:C0:19:11:23:B7" :
+        if advertisement_data.manufacturer_data:
+            for manufacturer_id, data in advertisement_data.manufacturer_data.items():
+                if len(data) > max(WEIGHT_OFFSET + 1, STABLE_OFFSET):
+                
+                    WEIGHT_LEFT_PLAYER = ((data[WEIGHT_OFFSET] & 0xff) << 8 | (data[WEIGHT_OFFSET + 1] & 0xff)) / 100
 
-                    weight_display.config(text=f"{current_weight:.2f} kg \n\n Score : {SCORE} pts")
+                    if BALL[2] == 0:
+                        BALL[2] = random.choice([-1, 1])
+                        BALL[3] = random.choice([-2, -1, 1, 2])
 
+                    if not FINISHED :
+                        if not move_ball():
+                            FINISHED = True
 
-                    if not FINISHED and (len(pipes) == 0 or pipes[-1][0] < LENGTH - 7):  # Ajoute un tuyau si l'écran a de la place
-                        Y_PIPE = random.randint(MIN_Y + (MAX_Y - MIN_Y) // 4, MAX_Y - (MAX_Y - MIN_Y) // 4)
-                        X_PIPE = LENGTH
-                        if N > 20:
-                            pipes.append([X_PIPE, Y_PIPE, random.choice([1, 0])])
+                    weight_display.config(text=f"Left Player :{WEIGHT_LEFT_PLAYER:.2f} kg \n\n Right Player :{WEIGHT_RIGHT_PLAYER:.2f} kg \n\n Score : {SCORE} pts")
 
-
-                    for pipe in pipes:
-                        pipe[0] -= 1
-
-
-                    if len(pipes) > 0 and pipes[0][0] < 0:
-                        SCORE += 1
-                        pipes = pipes[1:]
-
-                    if check_dead():
-                        FINISHED = True
-                        pipes = []
 
                     update_graph(ax, canvas)
 
@@ -146,7 +134,7 @@ def create_window_flappy_bird(parent_frame=None):
     weight_display.pack(pady=20)
 
     # Time left display
-    time_left = tk.Label(window, text="- sec", font=("Helvetica", 16))
+    time_left = tk.Label(window, text="", font=("Helvetica", 16))
     time_left.pack(pady=20)
 
     # Graph frame

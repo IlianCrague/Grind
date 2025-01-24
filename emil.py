@@ -82,7 +82,7 @@ def start_timer():
 def advertisement_callback(device, advertisement_data):
     """Handles Bluetooth advertisement data."""
     global weights, max_weight, weight_display, timer_running, TIME_LEFT, STARTED, FINISHED
-
+    print(device)
     if device.address == "2A:C0:19:11:23:B7":
         if advertisement_data.manufacturer_data:
             for manufacturer_id, data in advertisement_data.manufacturer_data.items():
