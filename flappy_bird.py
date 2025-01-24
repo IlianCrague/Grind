@@ -133,39 +133,50 @@ def run_asyncio(loop, stop_event):
         loop.run_forever()
 
 # Fonction pour créer la fenêtre de l'application
-def create_window():
-    """Crée la fenêtre principale de l'application."""
+def create_window_flappy_bird(parent_frame=None):
     global ax, canvas, weight_display, time_left
-    window = tk.Tk()
-    window.title("Poids Mesuré")
 
-    # Affichage du poids
+    if parent_frame is None:
+        window = tk.Tk()
+    else:
+        window = parent_frame
+
+    # Weight display
     weight_display = tk.Label(window, text="Déconnecté", font=("Helvetica", 16))
     weight_display.pack(pady=20)
 
-    # Cadre du graphique
+    # Time left display
+    time_left = tk.Label(window, text="- sec", font=("Helvetica", 16))
+    time_left.pack(pady=20)
+
+    # Graph frame
     canvas_frame = tk.Frame(window)
     canvas_frame.pack(padx=20, pady=20)
 
-    # Configuration du graphique
+    # Plot setup
     fig, ax_ = plt.subplots(figsize=(5, 4))
     ax = ax_
     canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
     canvas.get_tk_widget().pack()
 
-    # Boucle d'événements asynchrone
+    # Async event loop
     loop = asyncio.new_event_loop()
     stop_event = threading.Event()
     threading.Thread(target=run_asyncio, args=(loop, stop_event), daemon=True).start()
 
-    # Gestion de la fermeture de la fenêtre
+    # On close event (only for standalone windows)
     def on_close():
         stop_event.set()
-        window.quit()
+        if isinstance(window, (tk.Tk, tk.Toplevel)):
+            window.quit()
 
-    window.protocol("WM_DELETE_WINDOW", on_close)
-    window.mainloop()
+    if isinstance(window, (tk.Tk, tk.Toplevel)):
+        window.protocol("WM_DELETE_WINDOW", on_close)
+
+    # If it's a standalone window, start the event loop
+    if parent_frame is None:
+        window.mainloop()
 
 # Exécution de l'application
 if __name__ == "__main__":
-    create_window()
+    create_window_flappy_bird()

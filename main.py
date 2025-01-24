@@ -5,6 +5,7 @@ import sys
 # Exemple de création de fenêtres d'Emil et d'affichage simple, ces fonctions doivent être implémentées
 from emil import create_window_emil
 from simple_display import create_window_simple_display
+from flappy_bird import create_window_flappy_bird
 
 def show_frame(frame):
     """Affiche un cadre spécifique."""
@@ -24,8 +25,9 @@ def create_window():
     home_frame = tk.Frame(root)
     emil_frame = tk.Frame(root)
     simple_display_frame = tk.Frame(root)
+    flappy_bird_frame = tk.Frame(root)
 
-    for frame in (home_frame, emil_frame, simple_display_frame):
+    for frame in (home_frame, emil_frame, simple_display_frame, flappy_bird_frame):
         frame.grid(row=0, column=0, sticky="nsew")
 
     # Contenu de la page d'accueil
@@ -41,6 +43,12 @@ def create_window():
     )
     simple_display_button.pack(pady=10)
 
+    flappy_bird_button = tk.Button(
+        home_frame, text="Flappy Bird", font=("Helvetica", 12),
+        command=lambda: show_frame(simple_display_frame)  # Affiche le cadre Simple Display
+    )
+    flappy_bird_button.pack(pady=10)
+
     # Bouton pour revenir à la page d'accueil depuis Emil
     emil_back_button = tk.Button(
         emil_frame, text="Retour", font=("Helvetica", 12),
@@ -54,9 +62,16 @@ def create_window():
     )
     simple_display_back_button.pack(pady=10)
 
+    flappy_bird_back_button = tk.Button(
+        flappy_bird_frame, text="Retour", font=("Helvetica", 12),
+        command=lambda: show_frame(home_frame)  # Retourne au cadre d'accueil
+    )
+    flappy_bird_back_button.pack(pady=10)
+
     # Ajoutez des fenêtres de contenu dans les cadres
     create_window_emil(emil_frame)
     create_window_simple_display(simple_display_frame)
+    create_window_flappy_bird(flappy_bird_frame)
 
     # Assurez-vous que la fenêtre "home_frame" est affichée par défaut
     show_frame(home_frame)
