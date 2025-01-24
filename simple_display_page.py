@@ -12,7 +12,6 @@ max_weight = 0
 
 
 
-
 def update_graph(ax, canvas):
     ax.clear()  # Effacer l'ancien graphique
     ax.plot(range(len(weights)), weights, '-o', label="Poids (kg)", marker='')
@@ -58,36 +57,39 @@ def run_asyncio(loop, stop_event):
         loop.call_soon(loop.stop)
         loop.run_forever()
 
-def create_window_simple_display(parent_frame=None):
-    global ax, canvas, label
-    if parent_frame is None:
-        window = tk.Tk()
-    else :
-        window = parent_frame
+def create_simple_display_page(parent_frame):
+    """Crée la page Emil dans le cadre parent."""
+    global ax, canvas, weight_display, time_left
 
-    label = tk.Label(window, text="0.00 kg", font=("Helvetica", 16))
-    label.pack(pady=20)
+    # Weight display
+    weight_display = tk.Label(parent_frame, text="Déconnecté", font=("Helvetica", 16))
+    weight_display.pack(pady=20)
 
-    canvas_frame = tk.Frame(window)
+    # Time left display
+    time_left = tk.Label(parent_frame, text="- sec", font=("Helvetica", 16))
+    time_left.pack(pady=20)
+
+    # Graph frame
+    canvas_frame = tk.Frame(parent_frame)
     canvas_frame.pack(padx=20, pady=20)
 
+    # Plot setup
     fig, ax_ = plt.subplots(figsize=(5, 4))
     ax = ax_
     canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
     canvas.get_tk_widget().pack()
 
+    # Async event loop
     loop = asyncio.new_event_loop()
-
     stop_event = threading.Event()
-
     threading.Thread(target=run_asyncio, args=(loop, stop_event), daemon=True).start()
 
+    # Fonction pour arrêter proprement
     def on_close():
         stop_event.set()
-        window.quit()
-    window.protocol("WM_DELETE_WINDOW", on_close)
 
-    window.mainloop()
+    parent_frame.protocol = on_close
+
 
 if __name__ == "__main__":
     create_window()
