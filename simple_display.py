@@ -5,6 +5,14 @@ import asyncio
 import threading
 from bleak import BleakScanner
 from sequence import Sequence
+from ui_theme import (
+    apply_window_theme,
+    frame_style,
+    label_style,
+    button_style,
+    entry_style,
+    apply_matplotlib_dark,
+)
 
 
 WEIGHT_OFFSET = 10
@@ -15,13 +23,18 @@ max_weight = 0
 
 LENGTH_TAB = 20
 
+WEIGHT_GOAL = 40
+
 def update_graph(ax, canvas):
-    global SEQUENCE, max_weight, LENGTH_TAB
+    global WEIGHT_GOAL, max_weight, LENGTH_TAB
     ax.clear()
+    apply_matplotlib_dark(ax.figure, ax)
 
-    ax.set_ylim(0, max(max_weight / 100 + 10, 10))
+    ax.set_ylim(0, WEIGHT_GOAL + 10, 10)
+    if WEIGHT_GOAL > 0:
+        ax.plot(range(LENGTH_TAB), [WEIGHT_GOAL] * LENGTH_TAB, color="#f14c4c", label="Objectif (kg)")
 
-    ax.plot(range(len(weights)), weights, color="blue", marker='')
+    ax.plot(range(len(weights)), weights, color="#4fc1ff", marker='')
 
     # Adjust x-axis dynamically
     ax.set_xlim(0, LENGTH_TAB)
@@ -45,7 +58,7 @@ def advertisement_callback(device, advertisement_data):
                         max_weight = weight
 
                     # Update weight display
-                    weight_display.config(text=f"{weight_kg:.2f} kg     Max : {max_weight / 100:.2f} kg")
+                    weight_display.config(text=f"{weight_kg:.2f} kg     Max : {max_weight / 100:.2f} kg\n\n Max local : {max(weights) if len(weights) > 0 else 0} kg")
 
                     weights.append(weight_kg)
                     if len(weights) > LENGTH_TAB:
@@ -55,8 +68,7 @@ def advertisement_callback(device, advertisement_data):
 
 async def scan_for_advertisements():
     """Scans for BLE advertisements."""
-    scanner = BleakScanner()
-    scanner.register_detection_callback(advertisement_callback)
+    scanner = BleakScanner(detection_callback=advertisement_callback)
 
     await scanner.start()
     await asyncio.sleep(600)
@@ -80,38 +92,78 @@ def create_window_simple_display(parent_frame=None):
         window = tk.Tk()
     else:
         window = parent_frame
+    apply_window_theme(window)
+
+    main_card = tk.Frame(window, **frame_style())
+    main_card.pack(padx=24, pady=24, fill="both", expand=True)
 
     # Weight display
-    weight_display = tk.Label(window, text="Déconnecté", font=("Helvetica", 16))
-    weight_display.pack(pady=20)
+    weight_display = tk.Label(main_card, text="Deconnecte", **label_style("value"))
+    weight_display.pack(pady=(20, 12))
 
     # Time left display
-    time_left = tk.Label(window, text="- sec", font=("Helvetica", 16))
-    time_left.pack(pady=20)
+    time_left = tk.Label(main_card, text="Suivi en direct", **label_style("muted"))
+    time_left.pack(pady=(0, 16))
+
+    # Weight goal controls
+    goal_frame = tk.Frame(main_card, bg="#252526")
+    goal_frame.pack(pady=10)
+
+    goal_label = tk.Label(goal_frame, text="Weight goal (kg):", **label_style("body"))
+    goal_label.pack(side=tk.LEFT, padx=(0, 8))
+
+    goal_value = tk.StringVar(value=str(WEIGHT_GOAL))
+    goal_entry = tk.Entry(goal_frame, textvariable=goal_value, width=10, **entry_style())
+    goal_entry.pack(side=tk.LEFT)
+
+    def apply_weight_goal(event=None):
+        global WEIGHT_GOAL
+        try:
+            new_goal = float(goal_value.get().strip())
+            if new_goal < 0:
+                raise ValueError
+            WEIGHT_GOAL = new_goal
+            update_graph(ax, canvas)
+        except ValueError:
+            goal_value.set(str(WEIGHT_GOAL))
+
+    apply_goal_button = tk.Button(goal_frame, text="Appliquer", command=apply_weight_goal, **button_style())
+    apply_goal_button.pack(side=tk.LEFT, padx=(8, 0))
+    goal_entry.bind("<Return>", apply_weight_goal)
 
     # Graph frame
-    canvas_frame = tk.Frame(window)
-    canvas_frame.pack(padx=20, pady=20)
+    canvas_frame = tk.Frame(main_card, bg="#252526")
+    canvas_frame.pack(padx=20, pady=20, fill="both", expand=True)
 
     # Plot setup
     fig, ax_ = plt.subplots(figsize=(5, 4))
     ax = ax_
+    apply_matplotlib_dark(fig, ax)
     canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
+    canvas.get_tk_widget().configure(bg="#252526", highlightthickness=0, bd=0)
     canvas.get_tk_widget().pack()
 
     # Async event loop
     loop = asyncio.new_event_loop()
     stop_event = threading.Event()
-    threading.Thread(target=run_asyncio, args=(loop, stop_event), daemon=True).start()
+    ble_thread = threading.Thread(target=run_asyncio, args=(loop, stop_event), daemon=True)
+    ble_thread.start()
+
+    def cleanup_simple_display():
+        stop_event.set()
+        ble_thread.join(timeout=3)
+        return not ble_thread.is_alive()
 
     # On close event (only for standalone windows)
     def on_close():
-        stop_event.set()
+        cleanup_simple_display()
         if isinstance(window, (tk.Tk, tk.Toplevel)):
             window.quit()
 
     if isinstance(window, (tk.Tk, tk.Toplevel)):
         window.protocol("WM_DELETE_WINDOW", on_close)
+    else:
+        window.cleanup_simple_display = cleanup_simple_display
 
     # If it's a standalone window, start the event loop
     if parent_frame is None:

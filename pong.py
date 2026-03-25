@@ -12,7 +12,7 @@ WEIGHT_OFFSET = 10
 STABLE_OFFSET = 14
 WEIGHT_MIN = 1
 MAX_WEIGHT = 0
-LENGTH = 30
+LENGTH = 50
 POS_LEFT_PLAYER = 3
 POS_RIGHT_PLAYER = LENGTH - POS_LEFT_PLAYER
 MIN_Y = 0
@@ -35,9 +35,16 @@ def update_graph(ax, canvas):
     if not FINISHED:
         ax.plot(BALL[0], BALL[1], 'ro')
 
-    ax.plot([POS_LEFT_PLAYER, POS_LEFT_PLAYER], [WEIGHT_LEFT_PLAYER - taille_raquette, WEIGHT_LEFT_PLAYER + taille_raquette], color="red", marker='')
+    hl = WEIGHT_LEFT_PLAYER
+    if WEIGHT_LEFT_PLAYER > MAX_Y:
+        hl = MAX_Y - taille_raquette
+    hr = WEIGHT_RIGHT_PLAYER
+    if WEIGHT_RIGHT_PLAYER > MAX_Y:
+        hr = MAX_Y - taille_raquette
 
-    ax.plot([POS_RIGHT_PLAYER, POS_RIGHT_PLAYER], [WEIGHT_RIGHT_PLAYER - taille_raquette, WEIGHT_RIGHT_PLAYER + taille_raquette], color="blue", marker='')
+    ax.plot([POS_LEFT_PLAYER, POS_LEFT_PLAYER], [hl - taille_raquette, hl + taille_raquette], color="red", marker='')
+
+    ax.plot([POS_RIGHT_PLAYER, POS_RIGHT_PLAYER], [hr - taille_raquette, hr + taille_raquette], color="blue", marker='')
 
     # Ajuste l'échelle des axes
     ax.set_xlim(0, LENGTH)
@@ -47,14 +54,21 @@ def update_graph(ax, canvas):
 
 def move_ball():
     global BALL, taille_raquette, SCORE
+    hl = WEIGHT_LEFT_PLAYER
+    if WEIGHT_LEFT_PLAYER > MAX_Y:
+        hl = MAX_Y - taille_raquette
+    hr = WEIGHT_RIGHT_PLAYER
+    if WEIGHT_RIGHT_PLAYER > MAX_Y:
+        hr = MAX_Y - taille_raquette
     if BALL[0] + BALL[2] <= POS_LEFT_PLAYER :#post left player
-        if BALL[1] > WEIGHT_LEFT_PLAYER + taille_raquette or BALL[1] < WEIGHT_LEFT_PLAYER - taille_raquette :#dead
+
+        if BALL[1] >= hl + 2*taille_raquette or BALL[1] <= hl - 2*taille_raquette :#dead
             return False
         else:
             BALL[2] = BALL[2] * -1
             SCORE += 1
     if BALL[0] + BALL[2] >= POS_RIGHT_PLAYER : #post right player
-        if BALL[1] > WEIGHT_RIGHT_PLAYER + taille_raquette or BALL[1] < WEIGHT_RIGHT_PLAYER - taille_raquette :#dead
+        if BALL[1] >= hr + 2*taille_raquette or BALL[1] <= hr - 2*taille_raquette:#dead
             return False
         else:
             BALL[2] = BALL[2] * -1
@@ -88,7 +102,7 @@ def advertisement_callback(device, advertisement_data):
 
                     if BALL[2] == 0:
                         BALL[2] = random.choice([-1, 1])
-                        BALL[3] = random.choice([-2, -1, 1, 2])
+                        BALL[3] = random.choice([-1, 1])
 
                     if not FINISHED :
                         if not move_ball():

@@ -3,8 +3,15 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import asyncio
 import threading
+import os
 from bleak import BleakScanner
 from sequence import Sequence
+from ui_theme import (
+    apply_window_theme,
+    frame_style,
+    label_style,
+    apply_matplotlib_dark,
+)
 
 
 WEIGHT_OFFSET = 10
@@ -14,65 +21,30 @@ weights = []
 max_weight = 0
 timer_running = False
 LENGTH_TAB = 20
+SEQUENCE = None
+TIME_LEFT = 0
 
 # Sequence : [(Active=True/False, Name, Duration in seconds, Weight Goal)]
 # SEQUENCE = Sequence.from_file("utils/emil.sq")
-SEQUENCE = Sequence.from_file("utils/7_3.sq")
-#SEQUENCE = Sequence.from_file("utils/pinch_lift.sq")
+# SEQUENCE = Sequence.from_file("utils/7_3.sq")
+# SEQUENCE = Sequence.from_file("utils/pinch_lift.sq")
+
 STARTED = False
 FINISHED = False
-TIME_LEFT = SEQUENCE.time  # Initial time for the current sequence
-SEQUENCE_HEAD = SEQUENCE
 
-
-def format_sequence_text(sequence_head, current_sequence):
-    """Builds a readable sequence view and marks the current step."""
-    lines = []
-    index = 1
-    node = sequence_head
-
-    while node is not None:
-        mode = "Actif" if node.actif else "Repos"
-        goal = f" | objectif {node.weight_goal} kg" if node.actif else ""
-        prefix = "> " if node is current_sequence else "  "
-        lines.append(f"{prefix}{index}. {node.name} ({mode}) - {node.time}s{goal}")
-        node = node.next
-        index += 1
-
-    return "\n".join(lines) if lines else "Aucune sequence"
-
-
-def update_sequence_display():
-    """Refreshes the sequence text shown next to the graph."""
-    sequence_display.config(
-        text=format_sequence_text(SEQUENCE_HEAD, SEQUENCE)
-    )
-    update_current_step_display()
-
-
-def update_current_step_display():
-    """Shows the current step above the graph."""
-    if FINISHED:
-        current_step_display.config(text="Sequence terminée")
-        return
-
-    if SEQUENCE is None:
-        current_step_display.config(text="Etape courante : -")
-        return
-
-    current_step_display.config(text=f"{SEQUENCE.name}")
 
 def update_graph(ax, canvas):
     """Updates the weight graph."""
     global SEQUENCE, max_weight, LENGTH_TAB
     ax.clear()
+    apply_matplotlib_dark(ax.figure, ax)
     if STARTED and not FINISHED and SEQUENCE.actif:
-        ax.plot(range(LENGTH_TAB), [SEQUENCE.weight_goal] * LENGTH_TAB, color="red", label="Objectif (kg)")
+        ax.plot(range(LENGTH_TAB), [SEQUENCE.weight_goal] * LENGTH_TAB, color="#f14c4c", label="Objectif (kg)")
         ax.set_ylim(0, SEQUENCE.weight_goal + 5)
     else:
         ax.set_ylim(0, max(max_weight / 100 + 10, 10))
 
-    ax.plot(range(len(weights)), weights, label="Poids (kg)", color="blue", marker='')
+    ax.plot(range(len(weights)), weights, label="Poids (kg)", color="#4fc1ff", marker='')
 
     # Adjust x-axis dynamically
     ax.set_xlim(0, LENGTH_TAB)
@@ -96,13 +68,11 @@ def start_timer():
         if SEQUENCE.next is not None:
             SEQUENCE = SEQUENCE.next
             TIME_LEFT = SEQUENCE.time
-            update_sequence_display()
         else:
             timer_running = False
             time_left.config(text="Séquence terminée")
             STARTED = True
             FINISHED = True
-            update_sequence_display()
 
     def countdown():
         """Countdown logic for the timer."""
@@ -112,14 +82,15 @@ def start_timer():
             return
 
         if timer_running and TIME_LEFT > 0:
-            next = SEQUENCE.next.name if SEQUENCE.next is not None else "Finished"
-            time_left.config(text=f"{SEQUENCE.name} : {TIME_LEFT:.1f} sec \n\n  next : {next}")
+            next_name = SEQUENCE.next.name if SEQUENCE.next is not None else "Finished"
+            time_left.config(text=f"{SEQUENCE.name} : {TIME_LEFT:.1f} sec \n\n  next : {next_name}")
             TIME_LEFT -= .1
             time_left.after(100, countdown)
         if TIME_LEFT < 0.1:
             next_sequence()
 
     countdown()
+
 
 
 def advertisement_callback(device, advertisement_data):
@@ -132,7 +103,6 @@ def advertisement_callback(device, advertisement_data):
                     weight = (data[WEIGHT_OFFSET] & 0xff) << 8 | (data[WEIGHT_OFFSET + 1] & 0xff)
                     weight_kg = weight / 100
 
-
                     # Update max weight
                     if weight > max_weight:
                         max_weight = weight
@@ -141,113 +111,107 @@ def advertisement_callback(device, advertisement_data):
                     weight_display.config(text=f"{weight_kg:.2f} kg     Max : {max_weight / 100:.2f} kg")
 
                     # Logic for starting/stopping timer based on weight and SEQUENCE
-                    if not FINISHED and (SEQUENCE.actif and weight_kg > WEIGHT_MIN or not SEQUENCE.actif and weight_kg <= WEIGHT_MIN) :
-                            if not timer_running:  # Restart timer if paused
-                                if not STARTED:
-                                    TIME_LEFT = SEQUENCE.time
-                                    STARTED = True
-                                start_timer()
-                    else :
+                    if not FINISHED and (SEQUENCE.actif and weight_kg > WEIGHT_MIN or not SEQUENCE.actif and weight_kg <= WEIGHT_MIN):
+                        if not timer_running:  # Restart timer if paused
+                            if not STARTED:
+                                TIME_LEFT = SEQUENCE.time
+                                STARTED = True
+                            start_timer()
+                    else:
                         timer_running = False
-                    if timer_running or not STARTED or FINISHED :
+                    if timer_running or not STARTED or FINISHED:
                         weights.append(weight_kg)
                         if len(weights) > LENGTH_TAB:
                             weights.pop(0)
                         update_graph(ax, canvas)
 
 
-async def scan_for_advertisements():
+async def scan_for_advertisements(stop_event):
     """Scans for BLE advertisements."""
-    scanner = BleakScanner()
-    scanner.register_detection_callback(advertisement_callback)
+    scanner = BleakScanner(detection_callback=advertisement_callback)
 
     await scanner.start()
-    await asyncio.sleep(600)
-    await scanner.stop()
+    try:
+        while not stop_event.is_set():
+            await asyncio.sleep(0.2)
+    finally:
+        await scanner.stop()
+
 
 
 def run_asyncio(loop, stop_event):
     """Runs the asyncio event loop."""
     asyncio.set_event_loop(loop)
-    loop.create_task(scan_for_advertisements())
+    try:
+        loop.run_until_complete(scan_for_advertisements(stop_event))
+    finally:
+        loop.close()
 
-    while not stop_event.is_set():
-        loop.call_soon(loop.stop)
-        loop.run_forever()
 
 
-def create_window_emil(parent_frame=None):
-    global ax, canvas, weight_display, time_left, sequence_display, current_step_display
+def create_window(parent_frame=None, filename=None):
+    global ax, canvas, weight_display, time_left, SEQUENCE, TIME_LEFT
 
     if parent_frame is None:
         window = tk.Tk()
     else:
         window = parent_frame
+    apply_window_theme(window)
+
+    SEQUENCE = Sequence.from_file(filename)
+    TIME_LEFT = SEQUENCE.time  # Initial time for the current sequence
 
     # Weight display
-    weight_display = tk.Label(window, text="Déconnecté", font=("Helvetica", 16))
-    weight_display.pack(pady=20)
+    main_card = tk.Frame(window, **frame_style())
+    main_card.pack(padx=24, pady=24, fill="both", expand=True)
+
+    weight_display = tk.Label(main_card, text="Deconnecte", **label_style("value"))
+    weight_display.pack(pady=(20, 12))
 
     # Time left display
-    time_left = tk.Label(window, text="- sec", font=("Helvetica", 16))
-    time_left.pack(pady=20)
+    time_left = tk.Label(main_card, text="- sec", **label_style("value"))
+    time_left.pack(pady=(0, 20))
 
     # Graph frame
-    canvas_frame = tk.Frame(window)
-    canvas_frame.pack(padx=20, pady=20)
-
-    graph_frame = tk.Frame(canvas_frame)
-    graph_frame.pack(side="left", padx=(0, 12))
-
-    current_step_display = tk.Label(
-        graph_frame,
-        text="Etape courante : -",
-        font=("Helvetica", 12, "bold"),
-        anchor="w",
-    )
-    current_step_display.pack(fill="x", pady=(0, 8))
+    canvas_frame = tk.Frame(main_card, bg="#252526")
+    canvas_frame.pack(padx=20, pady=(0, 20), fill="both", expand=True)
 
     # Plot setup
     fig, ax_ = plt.subplots(figsize=(5, 4))
     ax = ax_
-    canvas = FigureCanvasTkAgg(fig, master=graph_frame)
+    apply_matplotlib_dark(fig, ax)
+    canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
+    canvas.get_tk_widget().configure(bg="#252526", highlightthickness=0, bd=0)
     canvas.get_tk_widget().pack()
-
-    # Sequence display next to graph
-    sequence_display = tk.Label(
-        canvas_frame,
-        text=format_sequence_text(SEQUENCE_HEAD, SEQUENCE),
-        justify="left",
-        anchor="nw",
-        font=("Helvetica", 11),
-        padx=10,
-        pady=8,
-        relief="groove",
-        borderwidth=1,
-    )
-    sequence_display.pack(side="left", fill="both", expand=True)
-
-    update_sequence_display()
 
     # Async event loop
     loop = asyncio.new_event_loop()
     stop_event = threading.Event()
-    threading.Thread(target=run_asyncio, args=(loop, stop_event), daemon=True).start()
+    ble_thread = threading.Thread(target=run_asyncio, args=(loop, stop_event), daemon=True)
+    ble_thread.start()
+
+    def cleanup_ble():
+        stop_event.set()
+        ble_thread.join(timeout=3)
+        return not ble_thread.is_alive()
 
     # On close event (only for standalone windows)
     def on_close():
-        stop_event.set()
+        cleanup_ble()
         if isinstance(window, (tk.Tk, tk.Toplevel)):
             window.quit()
+            window.destroy()
+            os._exit(0)
 
     if isinstance(window, (tk.Tk, tk.Toplevel)):
         window.protocol("WM_DELETE_WINDOW", on_close)
+    else:
+        window.cleanup_emil = cleanup_ble
 
     # If it's a standalone window, start the event loop
     if parent_frame is None:
         window.mainloop()
 
 
-
 if __name__ == "__main__":
-    create_window_emil()
+    create_window(filename="utils/emil.sq")
